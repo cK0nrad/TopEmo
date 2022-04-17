@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "discord.js": "^11.5.1",
+    "discord.js": "^13.6.0",
     "emoji-regex": "^8.0.0",
     "level": "^6.0.0",
     "lowdb": "^1.0.0",
