@@ -9,13 +9,47 @@ const client = new Discord.Client({
 const low = require('lowdb')
 const FileSync = require('lowdb/adapters/FileSync')
 
+const adapterUserTotal = new FileSync('dbUserTotal.json')
 const adapterUser = new FileSync('dbUser.json')
 const adapter = new FileSync('db.json')
 
 const db = low(adapter)
 const dbUser = low(adapterUser)
+const dbUserTotal = low(adapterUserTotal)
 
 const emoreg = (msg) => msg.match(/(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])|<(.*?)>/gi)
+
+
+const writeDB = (database, id, emo) => {
+
+  let curretnServer = database.get(id)
+
+  //Fetch the current emoji
+  isEmoji = curretnServer.find({
+    type: emo
+  }).value()
+
+  //If the emoji is already registered, increment the counter
+  if (isEmoji) {
+    curretnServer
+      .find({
+        type: emo
+      })
+      .assign({
+        amount: isEmoji.amount + 1
+      })
+      .write()
+  } else {
+    curretnServer
+      .push({
+        amount: 1,
+        type: emo
+      })
+      .write()
+  }
+
+}
+
 
 const register = (msg) => {
   let currentEmoji = emoreg(msg.content)
@@ -36,64 +70,18 @@ const register = (msg) => {
       [msg.author.id]: []
     }).write()
 
+    dbUserTotal.defaults({
+      [msg.guild.id]: []
+    }).write()
+    
     //Check for different hearts emoji 
     if (emo == "❤" || emo == "♥") {
       emo = "❤️"
     }
 
-    //We fetch the current user
-    let currentUser = dbUser.get(msg.author.id)
-
-    //Fetch the current emoji
-    let isEmoji = currentUser.find({
-      type: emo
-    }).value()
-
-    //If the emoji is already registered, increment the counter
-    if (isEmoji) {
-      currentUser
-        .find({
-          type: emo
-        })
-        .assign({
-          amount: isEmoji.amount + 1
-        })
-        .write()
-    } else {
-      currentUser
-        .push({
-          amount: 1,
-          type: emo
-        })
-        .write()
-    }
-
-    //We fetch the current server
-    let curretnServer = db.get(msg.guild.id)
-
-    //Fetch the current emoji
-    isEmoji = curretnServer.find({
-      type: emo
-    }).value()
-
-    //If the emoji is already registered, increment the counter
-    if (isEmoji) {
-      curretnServer
-        .find({
-          type: emo
-        })
-        .assign({
-          amount: isEmoji.amount + 1
-        })
-        .write()
-    } else {
-      curretnServer
-        .push({
-          amount: 1,
-          type: emo
-        })
-        .write()
-    }
+    writeDB(db, msg.guild.id, emo)
+    writeDB(dbUser, msg.author.id, emo)
+    writeDB(dbUserTotal, msg.guild.id, msg.author.id)
 
   })
 
@@ -175,6 +163,7 @@ client.on('messageCreate', msg => {
 
   if (msg.content == "?resync" && (msg.member.permissions.has("ADMINISTRATOR"))) {
     msg.delete()
+    
     db.get(msg.guild.id)
       .remove()
       .write()
@@ -190,9 +179,25 @@ client.on('messageCreate', msg => {
     })
   }
 
-  if (msg.content == "?topemo" || msg.content == "?myemo") {
+  if (msg.content == "?topemo" || msg.content == "?myemo" || msg.content == "?topuser") {
     msg.delete()
-    let database = msg.content == "?topemo" ? db.get(msg.guild.id) : dbUser.get(msg.author.id)
+    let database, title;
+
+    switch (msg.content){
+      case "?topemo":
+        database = db.get(msg.guild.id)
+        title = "Emote total sur le serveur"
+        break;
+      case "?myemo":
+        database = dbUser.get(msg.author.id)
+        title = "Votre total d'emote"
+        break;
+      case "?topuser":
+        database = dbUserTotal.get(msg.guild.id)
+        title = "Utilisateur utilisant le plus d'emote"
+        break;
+    }
+
     let topito = database.orderBy('amount').reverse().take(10).value()
 
     let message = new Discord.MessageEmbed()
@@ -207,12 +212,18 @@ client.on('messageCreate', msg => {
         text: "© someone who did it ",
         iconURL: client.user.defaultAvatarURL
       });
+
     topito.forEach((el, id) => {
+      if(msg.content == "?topuser"){
+        let user = msg.guild.members.cache.get(el.type)
+        el.type=user.displayName + "#" + user.user.discriminator
+      }
       message.addFields({
         name: "#" + (id + 1) + ": " + el.type,
         value: el.amount + ' fois'
       })
     })
+
 
     msg.channel.send({
       embeds: [message]
